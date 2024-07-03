@@ -77,6 +77,11 @@ public class DataManager extends JFrame{
 
     private Robot robot;
 
+    private double maxLoad = 0;
+    private double minLoad = Double.MAX_VALUE;
+    private double maxCost = 0;
+    private double minCost = Double.MAX_VALUE;
+
     DataStorage ds = new DataStorage();
     HashMap<String, HashMap<String, String>> data = ds.getData();
     HashMap<Integer, Double> priceCurve = new HashMap<>();
@@ -91,7 +96,6 @@ public class DataManager extends JFrame{
     JTextField fileDirField = new JTextField("data.txt");
     JTextField emailField = new JTextField("yq-sun21@mails.tsinghua.edu.cn");
     JTextField priceCurveField = new JTextField("price.txt");
-    JTextField livingHabitsField = new JTextField("5:1;");
     JButton openFileButton = new JButton("Open File");
     JButton loadDataButton = new JButton("Load/Refresh Data");
     JButton addDataButton = new JButton("Add Data");
@@ -102,7 +106,6 @@ public class DataManager extends JFrame{
     JButton simulateButton = new JButton("Simulate Electricity Usage");
     JButton loadPriceDataButton = new JButton("Open Price File");
     JButton setPriceCurveButton = new JButton("Set Price Data");
-    JButton setLivingHabitsButton = new JButton("Set Living Habits");
     JCheckBox optimizeCheckBox = new JCheckBox("Optimize Usage");
     JComboBox<String> keyComboBox = new JComboBox<String>();
     JComboBox<String> valueComboBox = new JComboBox<String>();
@@ -157,11 +160,6 @@ public class DataManager extends JFrame{
             simulatePanel.add(simulateButton, BorderLayout.CENTER);
             simulatePanel.add(optimizeCheckBox, BorderLayout.EAST);
 
-            // Create a new panel for living habits input and set button
-            JPanel livingHabitsPanel = new JPanel(new GridLayout(1, 3));
-            livingHabitsPanel.add(livingHabitsField);
-            livingHabitsPanel.add(setLivingHabitsButton);
-
             upPanel.setPreferredSize(upDimension);
             GridBagConstraints constraints = new GridBagConstraints();
             GridBagLayout gbl = new GridBagLayout();
@@ -196,10 +194,9 @@ public class DataManager extends JFrame{
             upPanel.add(saveDataButton, constraints);
 
             centerPanel.setPreferredSize(centerDimension);
-            GridLayout gl = new GridLayout(5, 1);
+            GridLayout gl = new GridLayout(4, 1);
             centerPanel.setLayout(gl);
             centerPanel.add(priceCurvePanel);
-            centerPanel.add(livingHabitsPanel);
             centerPanel.add(simulatePanel);
             centerPanel.add(emailPanel);
             centerPanel.add(findPanel);
@@ -539,9 +536,6 @@ public class DataManager extends JFrame{
             priceFile = priceCurveField.getText();
             setPriceCurve(priceCurve, priceFile);
         });
-        setLivingHabitsButton.addActionListener(e -> {
-            setLivingHabits();
-        });
     }
 
     private void loadData(String fileDir) {
@@ -591,7 +585,6 @@ public class DataManager extends JFrame{
         downPanel.revalidate();
         downPanel.repaint();
     }
-
 
     private void sendEmail(String to, String subject, String body) {
         String from = "597744685@qq.com";
@@ -663,28 +656,6 @@ public class DataManager extends JFrame{
         }
     }
 
-
-    private void setLivingHabits() {
-        String[] habits = livingHabitsField.getText().split(";");
-        for (String habit : habits) {
-            String[] parts = habit.split(":");
-            if (parts.length < 2) {
-                JOptionPane.showMessageDialog(null, "Invalid input format. Please use the format 'hour:type;hour:type;...'");
-                continue; 
-            }
-            int hour = Integer.parseInt(parts[0]);
-            String type = parts[1];
-            livingHabits.computeIfAbsent(hour, k -> new ArrayList<>()).add(type);
-        }
-        JOptionPane.showMessageDialog(null, "Living habits set successfully.");
-    }
-
-
-    private double maxLoad = 0;
-    private double minLoad = Double.MAX_VALUE;
-    private double maxCost = 0;
-    private double minCost = Double.MAX_VALUE;
-
     private void simulateElectricityUsage(Boolean optimize) {
         // Simulate electricity usage for 24 hours
         int simulationHours = 24;
@@ -692,158 +663,122 @@ public class DataManager extends JFrame{
         double totalCost = 0;
         HashMap<String, Double> energyConsumptionMap = new HashMap<>();
         Random random = new Random();
-
-        for (int hour = 0; hour < simulationHours; hour++) {
-            double hourlyCost = 0;
-            double hourlyLoad = 0;
-            for (String key : ds.getData().keySet()) {
-                HashMap<String, String> appliance = ds.getData().get(key);
-                String status = appliance.get("Status");
-                String type = appliance.get("Type");
-                double power = Double.parseDouble(appliance.get("Power"));
-
-                if (optimize.equals(true)) {
-                    status = optimizeUsage(hour, type, power, status, random);
-                } else {
-                    if (livingHabits.containsKey(hour)) {
-                        if (livingHabits.get(hour).contains(type)) {
-                            status = "ON";
-                        } else {
-                            status = "OFF";
-                        }
-                    } else {
-                        if (status.equals("OFF")) {
-                            if (type.equals("1")) {
-                                status = "ON";
-                            } else if (type.equals("2") || type.equals("3")) {
-                                if (random.nextBoolean()) {
-                                    status = "ON";
-                                }
-                            }
-                        } else {
-                            if (random.nextBoolean()) {
-                                status = "OFF";
-                            }
-                        }
-                    }
-                }
-                appliance.put("Status", status);
-                ds.updateData(key, "Status", status);
-
-                // Calculate energy consumption if the appliance is ON
-                if (status.equals("ON")) {
-                    double energyConsumed = power / 1000; // Convert to kWh
-                    totalEnergyConsumed += energyConsumed;
-                    hourlyCost += energyConsumed * priceCurve.get(hour % 24); // Apply the price curve
-                    energyConsumptionMap.put(key, energyConsumptionMap.getOrDefault(key, 0.0) + energyConsumed);
-                }
-            }
-            totalCost += hourlyCost;
-            hourlyCosts.put(hour, hourlyCost);
-
-            // Determine whether to charge or discharge the robot
-            if (priceCurve.get(hour % 24) < 0.15) { 
-                hourlyLoad += robot.charge();
-            } else {
-                hourlyLoad -= robot.discharge();
-            }
-
-            totalCost += hourlyCost;
-            hourlyCosts.put(hour, hourlyCost);
-
-            // Update max and min load
-            if (hourlyLoad > maxLoad) {
-                maxLoad = hourlyLoad;
-                maxCost = hourlyCost;
-            }
-            if (hourlyLoad < minLoad) {
-                minLoad = hourlyLoad;
-                minCost = hourlyCost;
-            }
-        }
-
-        // Display simulation results
-        StringBuilder result = new StringBuilder("Simulation Results:\n");
-        result.append("Total Energy Consumed: ").append(totalEnergyConsumed).append(" kWh\n");
-        result.append("Total Cost: ").append(totalCost).append(" USD\n");
-        result.append("Energy Consumption by Appliance:\n");
-        for (String key : energyConsumptionMap.keySet()) {
-            result.append(key).append(": ").append(energyConsumptionMap.get(key)).append(" kWh\n");
-        }
-        JOptionPane.showMessageDialog(null, result.toString());
-
-        // Generate the cost chart
-        generateCostChart();
-    }
-
-
-    private String optimizeUsage(int hour, String type, double power, String status, Random random) {
-        if (priceCurve != null) {
-            if(priceCurve.isEmpty()){
-                JOptionPane.showMessageDialog(null, "Price curve is empty. Please set the price curve first.");
-                return status;
-            }
-        }else{
-            JOptionPane.showMessageDialog(null, "Price curve is not set. Please set the price curve first.");
-            return status;
-        }
-        if (!priceCurve.containsKey(hour % 24)) {
-            return status;
-        }
-        double currentPrice = priceCurve.get(hour % 24);
-        if (currentPrice < 0.15) { 
-            if (type.equals("2") || type.equals("3")) {
-                return "ON";
-            }
+        if (optimize){
+            // TODO: Implement the optimization algorithm and update the status of each appliance
+            // based on the price curve and living habits
+            JOptionPane.showMessageDialog(null, "Optimization is not implemented yet. Please check back later.", "Optimization", JOptionPane.INFORMATION_MESSAGE);
         } else {
-            if (livingHabits.containsKey(hour) && livingHabits.get(hour).contains(type)) {
-                return "ON";
-            } else {
-                return "OFF";
-            }
+            ;
         }
+        JOptionPane.showMessageDialog(null, "Simulation is not implemented yet. Please check back later.", "Simulation", JOptionPane.INFORMATION_MESSAGE);
+        // // Display simulation results
+        // StringBuilder result = new StringBuilder("Simulation Results:\n");
+        // result.append("Total Energy Consumed: ").append(totalEnergyConsumed).append(" kWh\n");
+        // result.append("Total Cost: ").append(totalCost).append(" USD\n");
+        // result.append("Energy Consumption by Appliance:\n");
+        // for (String key : energyConsumptionMap.keySet()) {
+        //     result.append(key).append(": ").append(energyConsumptionMap.get(key)).append(" kWh\n");
+        // }
+        // JOptionPane.showMessageDialog(null, result.toString());
 
-        if (status.equals("OFF")) {
-            if (type.equals("1")) {
-                return "ON";
-            } else if (type.equals("2") || type.equals("3")) {
-                if (random.nextBoolean()) {
-                    return "ON";
-                }
-            }
-        } else {
-            if (random.nextBoolean()) {
-                return "OFF";
-            }
-        }
-        return status;
+        // // Generate the cost chart
+        // generateCostChart();
     }
 
-    private void generateCostChart() {
-        DefaultCategoryDataset dataset = new DefaultCategoryDataset();
-        for (Integer hour : hourlyCosts.keySet()) {
-            dataset.addValue(hourlyCosts.get(hour), "Cost", hour);
-        }
 
-        JFreeChart barChart = ChartFactory.createBarChart(
-            "Hourly Electricity Cost",
-            "Hour",
-            "Cost (USD)",
-            dataset,
-            PlotOrientation.VERTICAL,
-            true, true, false);
+    // private String optimizeUsage(int hour, String type, double power, String status, Random random) {
+    //     if (priceCurve != null) {
+    //         if(priceCurve.isEmpty()){
+    //             JOptionPane.showMessageDialog(null, "Price curve is empty. Please set the price curve first.");
+    //             return status;
+    //         }
+    //     }else{
+    //         JOptionPane.showMessageDialog(null, "Price curve is not set. Please set the price curve first.");
+    //         return status;
+    //     }
+    //     if (!priceCurve.containsKey(hour % 24)) {
+    //         return status;
+    //     }
+    //     double currentPrice = priceCurve.get(hour % 24);
+    //     if (currentPrice < 0.15) { 
+    //         if (type.equals("2") || type.equals("3")) {
+    //             return "ON";
+    //         }
+    //     } else {
+    //         if (livingHabits.containsKey(hour) && livingHabits.get(hour).contains(type)) {
+    //             return "ON";
+    //         } else {
+    //             return "OFF";
+    //         }
+    //     }
 
-        ChartPanel chartPanel = new ChartPanel(barChart);
-        JFrame chartFrame = new JFrame();
-        chartFrame.setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
-        chartFrame.add(chartPanel);
-        chartFrame.pack();
-        chartFrame.setVisible(true);
-    }
+    //     if (status.equals("OFF")) {
+    //         if (type.equals("1")) {
+    //             return "ON";
+    //         } else if (type.equals("2") || type.equals("3")) {
+    //             if (random.nextBoolean()) {
+    //                 return "ON";
+    //             }
+    //         }
+    //     } else {
+    //         if (random.nextBoolean()) {
+    //             return "OFF";
+    //         }
+    //     }
+    //     return status;
+    // }
+
+    // private void generateCostChart() {
+    //     DefaultCategoryDataset dataset = new DefaultCategoryDataset();
+    //     for (Integer hour : hourlyCosts.keySet()) {
+    //         dataset.addValue(hourlyCosts.get(hour), "Cost", hour);
+    //     }
+
+    //     JFreeChart barChart = ChartFactory.createBarChart(
+    //         "Hourly Electricity Cost",
+    //         "Hour",
+    //         "Cost (USD)",
+    //         dataset,
+    //         PlotOrientation.VERTICAL,
+    //         true, true, false);
+
+    //     ChartPanel chartPanel = new ChartPanel(barChart);
+    //     JFrame chartFrame = new JFrame();
+    //     chartFrame.setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
+    //     chartFrame.add(chartPanel);
+    //     chartFrame.pack();
+    //     chartFrame.setVisible(true);
+    // }
 
     // private void setupMenu() {
     //     // TODO Auto-generated method stub
     // }
+
+    public String convertSecondToTime(int second) {
+        int time = second;
+        while(time < 0){
+            time += 86400;
+        }
+        time = time % 86400;
+        int hour = second / 3600;
+        int minute = (second % 3600) / 60;
+        int sec = second % 60;
+        return String.format("%02d:%02d:%02d", hour, minute, sec);
+    }
+    
+    public int convertTimeToSecond(String time) {
+        // 使用正则表达式验证时间格式HH:mm:ss
+        if (!time.matches("\\d{2}:\\d{2}:\\d{2}")) {
+            // 如果格式不正确，显示错误消息框
+            JOptionPane.showMessageDialog(null, "时间格式不正确，请使用HH:mm:ss格式", "格式错误", JOptionPane.ERROR_MESSAGE);
+            return -1; // 返回一个错误标志
+        }
+        String[] parts = time.split(":");
+        int hour = Integer.parseInt(parts[0]);
+        int minute = Integer.parseInt(parts[1]);
+        int second = Integer.parseInt(parts[2]);
+        return hour * 3600 + minute * 60 + second;
+    }
 
     class PriceCurvePanel extends JPanel {
         private HashMap<Integer, Double> priceCurve;

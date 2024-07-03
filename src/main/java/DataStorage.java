@@ -71,7 +71,7 @@ public class DataStorage {
         try (BufferedWriter bufferedWriter = new BufferedWriter(new FileWriter(fileName))) {
             TreeSet<String> sortedKeys = new TreeSet<>(data.keySet());
             for (String key : sortedKeys) {
-                bufferedWriter.write(key + ":");
+                bufferedWriter.write(key + ";");
                 TreeMap<String, String> sortedValue = new TreeMap<>(data.get(key));
                 for (String k : sortedValue.keySet()) {
                     bufferedWriter.write(k + "=" + sortedValue.get(k) + ",");
@@ -89,7 +89,7 @@ public class DataStorage {
             data.clear();
             String line;
             while ((line = bufferedReader.readLine()) != null) {
-                String[] parts = line.split(":");
+                String[] parts = line.split(";");
                 String key = parts[0];
                 HashMap<String, String> value = new HashMap<String, String>();
                 String[] fields = parts[1].split(",");
